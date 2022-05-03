@@ -5,6 +5,7 @@ import typescript from 'rollup-plugin-typescript2';
 import visualizer from 'rollup-plugin-visualizer';
 import { terser } from 'rollup-plugin-terser';
 import dts from 'rollup-plugin-dts';
+const workerLoader = require('rollup-plugin-web-worker-loader');
 
 const bundle = (format, filename, options = {}) => ({
   input: 'src/index.ts',
@@ -21,6 +22,7 @@ const bundle = (format, filename, options = {}) => ({
   plugins: [
     ...(options.resolve ? [resolve({ preferBuiltins: false })] : []),
     commonjs(),
+    workerLoader(),
     typescript({
       typescript: require('typescript'),
       clean: options.stats,
@@ -33,8 +35,8 @@ const bundle = (format, filename, options = {}) => ({
 });
 
 export default [
-  bundle('cjs', pkg.main),
-  bundle('es', pkg.module),
+  bundle('cjs', pkg.main, { resolve: true, stats: true }),
+  bundle('es', pkg.module, { resolve: true, stats: true }),
   bundle('umd', pkg.browser.replace('.min', ''), { resolve: true, stats: true }),
   bundle('umd', pkg.browser, { resolve: true, minimize: true }),
   {

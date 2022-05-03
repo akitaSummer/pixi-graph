@@ -19,6 +19,10 @@ import { PixiNode } from "./node";
 import { PixiEdge } from "./edge";
 import { LINE_SCALE_MODE, settings } from "@pixi/graphics-smooth";
 import { SmoothGraphics as Graphics } from "@pixi/graphics-smooth";
+import { wrap, Remote, transfer } from "comlink";
+import * as d3 from "d3";
+import D3Computor from "web-worker:./workers/d3.worker.ts";
+import SmoothFollow from "./utils/SmoothFollow";
 import { colorToPixi } from "./utils/color";
 
 Application.registerPlugin(TickerPlugin);
@@ -96,6 +100,11 @@ export class PixiGraph<
   style: GraphStyleDefinition<NodeAttributes, EdgeAttributes>;
   hoverStyle: GraphStyleDefinition<NodeAttributes, EdgeAttributes>;
   resources?: IAddOptions[];
+  nodesBuffer: Float32Array;
+  worker?: Remote<import("./workers/d3.worker").D3Computor>;
+  sendTime: number;
+  private nodes: NodeAttributes[];
+  private edges: EdgeAttributes[];
 
   private app: Application;
   private textureCache: TextureCache;
@@ -155,6 +164,21 @@ export class PixiGraph<
       autoDensity: true,
     });
     this.container.appendChild(this.app.view);
+
+    this.edges = [];
+    this.nodes = [];
+    this.nodesBuffer = new Float32Array();
+    this.sendTime = Date.now();
+
+    const workerFactory = wrap<typeof import("./workers/d3.worker").D3Computor>(
+      new D3Computor()
+    );
+
+    new workerFactory().then((worker) => {
+      this.worker = worker;
+      console.log(worker, this.createWorkerSimulation, "worker");
+      this.createWorkerSimulation.bind(this);
+    });
 
     this.app.renderer.plugins.interaction.moveWhenInside = true;
     this.app.view.addEventListener("wheel", (event) => {
@@ -527,9 +551,149 @@ export class PixiGraph<
   }
 
   private createGraph() {
+    this.graph.forEachNode(this.initForceNodes.bind(this));
+    this.graph.forEachEdge(this.initForceEdges.bind(this));
+    this.nodesBuffer = new Float32Array(this.nodes.length * 2);
+    const simulation = d3
+      .forceSimulation()
+      .nodes(this.nodes)
+      .force(
+        "link",
+        // @ts-ignore
+        d3.forceLink(this.edges).id((d: any) => d.id)
+      )
+      .alpha(0.5)
+      .alphaDecay(0.01)
+      .alphaTarget(0.05);
+
+    simulation
+      .force("charge", d3.forceManyBody().strength(-5))
+      .force(
+        "center",
+        d3.forceCenter(
+          this.container.clientWidth / 2,
+          this.container.clientHeight / 2
+        )
+      )
+      .stop();
     this.graph.forEachNode(this.createNode.bind(this));
     this.graph.forEachEdge(this.createEdge.bind(this));
     this.updateArrows();
+    this.forceGraphRender.bind(this);
+  }
+
+  private forceGraphRender() {
+    debugger;
+    console.log(this.worker, "forceGraphRender");
+    if (this.worker) {
+      console.log(this.nodesBuffer);
+      for (let i = 0; i < this.nodes.length; i++) {
+        const node = this.nodes[i];
+        if (this.mousedownNodeKey !== node.id) {
+          const delta = 1 / 60;
+          node.smoothFollowX.loop(delta);
+          node.smoothFollowY.loop(delta);
+          node.x = node.smoothFollowX.getSmooth();
+          node.y = node.smoothFollowY.getSmooth();
+        }
+      }
+
+      for (let i = 0; i < this.nodes.length; i++) {
+        this.updateNodeStyleByKey(this.nodes[i].id);
+      }
+
+      for (let i = 0; i < this.edges.length; i++) {
+        console.log(this.edges[i]);
+        this.updateEdgeStyleByKey(this.edges[i].id);
+      }
+
+      this.updateArrows();
+
+      requestAnimationFrame(this.forceGraphRender.bind(this));
+    }
+  }
+
+  async createWorkerSimulation() {
+    console.log(this.worker, "createWorkerSimulation");
+    if (this.worker) {
+      this.sendTime = Date.now();
+      this.nodesBuffer = new Float32Array((this.nodes.length || 0) * 2);
+      this.nodesBuffer = await this.worker.createSimulation(
+        { nodes: this.nodes, edges: this.edges },
+        {
+          alpha: 0.5,
+          alphaDecay: 0.01,
+          alphaTarget: 0.05,
+          iterations: 1,
+          nodeRepulsionStrength: 5,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        },
+        transfer(this.nodesBuffer, [this.nodesBuffer.buffer])
+      );
+
+      await this.updateNodesFromBuffer();
+    }
+  }
+
+  private async updateWorkerBuffers() {
+    if (this.worker) {
+      this.sendTime = Date.now();
+      this.nodesBuffer = await this.worker.updateWorkerBuffers(
+        {
+          iterations: 1,
+          nodeRepulsionStrength: 5,
+          width: this.container.clientWidth / 2,
+
+          height: this.container.clientHeight / 2,
+        },
+        transfer(this.nodesBuffer, [this.nodesBuffer.buffer])
+      );
+
+      this.updateNodesFromBuffer.bind(this);
+    }
+  }
+
+  private async updateNodesFromBuffer() {
+    for (var i = 0; i < this.nodes.length; i++) {
+      const node = this.nodes[i];
+      if (this.mousedownNodeKey !== node.id) {
+        node.smoothFollowX.set((node.x = this.nodesBuffer[i * 2 + 0]));
+        node.smoothFollowY.set((node.y = this.nodesBuffer[i * 2 + 1]));
+      }
+    }
+
+    let delay = (1 / 60) * 1000 - (Date.now() - this.sendTime);
+    if (delay < 0) {
+      delay = 0;
+    }
+    setTimeout(this.updateWorkerBuffers.bind(this), delay);
+  }
+
+  private initForceNodes(_nodeKey: string, nodeAttributes: NodeAttributes) {
+    nodeAttributes.x = 0;
+    nodeAttributes.y = 0;
+    // @ts-ignore
+    nodeAttributes.smoothFollowX = new SmoothFollow();
+    // @ts-ignore
+    nodeAttributes.smoothFollowY = new SmoothFollow();
+    nodeAttributes.smoothFollowX.set(window.innerWidth / 2);
+    nodeAttributes.smoothFollowY.set(window.innerHeight / 2);
+
+    this.nodes.push(nodeAttributes);
+  }
+
+  private initForceEdges(
+    edgeKey: string,
+    edgeAttributes: EdgeAttributes,
+    _sourceNodeKey: string,
+    _targetNodeKey: string,
+    _sourceNodeAttributes: NodeAttributes,
+    _targetNodeAttributes: NodeAttributes
+  ) {
+    // @ts-ignore
+    edgeAttributes.id = edgeKey;
+    this.edges.push(edgeAttributes);
   }
 
   private createNode(nodeKey: string, nodeAttributes: NodeAttributes) {

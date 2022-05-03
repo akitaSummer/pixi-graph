@@ -40,6 +40,8 @@
     "@pixi/ticker": "^6.0.2",
     "@pixi/utils": "^6.0.2",
     "color-rgba": "^2.2.3",
+    "comlink": "^4.3.1",
+    "d3": "^7.4.4",
     "deepmerge": "^4.2.2",
     "events": "^3.3.0",
     "pixi-viewport": "^4.30.4",
@@ -52,6 +54,7 @@
     "@rollup/plugin-commonjs": "^18.0.0",
     "@rollup/plugin-node-resolve": "^11.2.1",
     "@types/color-rgba": "^2.1.0",
+    "@types/d3": "^7.1.0",
     "@types/deepmerge": "^2.2.0",
     "@types/resize-observer-browser": "^0.1.5",
     "graphology-types": "^0.19.2",
@@ -61,6 +64,7 @@
     "rollup-plugin-terser": "^7.0.2",
     "rollup-plugin-typescript2": "^0.30.0",
     "rollup-plugin-visualizer": "^5.4.1",
+    "rollup-plugin-web-worker-loader": "^1.6.1",
     "tslib": "^2.4.0",
     "typescript": "^4.2.4"
   }

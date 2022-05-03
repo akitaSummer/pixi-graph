@@ -1,12 +1,12 @@
-import { Container } from '@pixi/display';
-import { Sprite } from '@pixi/sprite';
-import { Texture } from '@pixi/core';
-import '@pixi/mixin-get-child-by-name';
-import { colorToPixi } from '../utils/color';
-import { EdgeStyle } from '../utils/style';
-import { TextureCache } from '../texture-cache';
+import { Container } from "@pixi/display";
+import { Sprite } from "@pixi/sprite";
+import { Texture } from "@pixi/core";
+import "@pixi/mixin-get-child-by-name";
+import { colorToPixi } from "../utils/color";
+import { EdgeStyle } from "../utils/style";
+import { TextureCache } from "../texture-cache";
 
-const EDGE_LINE = 'EDGE_LINE';
+const EDGE_LINE = "EDGE_LINE";
 
 export function createEdge(edgeGfx: Container) {
   // edgeGfx -> edgeLine
@@ -16,7 +16,11 @@ export function createEdge(edgeGfx: Container) {
   edgeGfx.addChild(edgeLine);
 }
 
-export function updateEdgeStyle(edgeGfx: Container, edgeStyle: EdgeStyle, _textureCache: TextureCache) {
+export function updateEdgeStyle(
+  edgeGfx: Container,
+  edgeStyle: EdgeStyle,
+  _textureCache: TextureCache
+) {
   // edgeGfx -> edgeLine
   const edgeLine = edgeGfx.getChildByName!(EDGE_LINE) as Sprite;
   edgeLine.width = edgeStyle.width;
